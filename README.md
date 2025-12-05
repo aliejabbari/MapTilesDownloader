@@ -2,6 +2,8 @@
 
 **A super easy to use GUI for downloading map tiles**
 
+**Upgraded version from [AliFlux/MapTilesDownloader](https://github.com/AliFlux/MapTilesDownloader) - upgraded to work fine with changes in APIs and work well with Bing and Google**
+
 <p align="center">
   <img src="gif/map-tiles-downloader.gif">
 </p>
