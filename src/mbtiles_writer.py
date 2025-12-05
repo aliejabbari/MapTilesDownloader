@@ -29,9 +29,11 @@ class MbtilesWriter:
 
 
 	@staticmethod
-	def addMetadata(lock, path, file, name, description, format, bounds, center, minZoom, maxZoom, profile="mercator", tileSize=256):
+	def addMetadata(lock, path, file, name, description, format, bounds, center, minZoom, maxZoom, profile="mercator", tileSize=256, extraMetadata=None):
 
 		MbtilesWriter.ensureDirectory(lock, path)
+
+		extraMetadata = extraMetadata or {}
 
 		connection = sqlite3.connect(file, check_same_thread=False)
 		c = connection.cursor()
@@ -51,7 +53,7 @@ class MbtilesWriter:
 		connection.commit()
 		
 		try:
-			c.executemany("INSERT INTO metadata (name, value) VALUES (?, ?);", [
+			metadata_rows = [
 				("name", name),
 				("description", description),
 				("format", format), 
@@ -65,7 +67,12 @@ class MbtilesWriter:
 				("generator", "Map Tiles Downloader via AliFlux"),
 				("type", "overlay"),
 				("attribution", "Map Tiles Downloader via AliFlux"),
-			])
+			]
+
+			for key, value in extraMetadata.items():
+				metadata_rows.append((key, str(value)))
+
+			c.executemany("INSERT INTO metadata (name, value) VALUES (?, ?);", metadata_rows)
 
 			connection.commit()
 		except:

@@ -29,6 +29,26 @@ class Utils:
 	def randomString():
 		return uuid.uuid4().hex.upper()[0:6]
 
+	@staticmethod
+	def build_request(url):
+		# Use a browser-like header to avoid 403 blocks from providers like Google
+		headers = {
+			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+			"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+			"Accept-Language": "en-US,en;q=0.9",
+		}
+
+		# Some providers (Google) expect a maps referrer to avoid HTTP 403
+		if "google" in url.lower():
+			headers["Referer"] = "https://www.google.com/maps"
+
+		return urllib.request.Request(url, headers=headers)
+
+	@staticmethod
+	def open_url(url):
+		request = Utils.build_request(url)
+		return urllib.request.urlopen(request, context=ssl._create_unverified_context())
+
 	def getChildTiles(x, y, z):
 		childX = x * 2
 		childY = y * 2
@@ -119,19 +139,23 @@ class Utils:
 
 		code = 0
 
-		# monkey patching SSL certificate issue
-		# DONT use it in a prod/sensitive environment
-		ssl._create_default_https_context = ssl._create_unverified_context
-
 		try:
-			path, response = urllib.request.urlretrieve(url, destination)
-			code = 200
+			with Utils.open_url(url) as response:
+				code = response.getcode()
+				if code != 200:
+					return code
+
+				directory = os.path.dirname(destination)
+				if directory != "":
+					os.makedirs(directory, exist_ok=True)
+
+				with open(destination, "wb") as out_file:
+					out_file.write(response.read())
+		except urllib.error.HTTPError as e:
+			code = e.code
 		except urllib.error.URLError as e:
-			if not hasattr(e, "code"):
-				print(e)
-				code = -1
-			else:
-				code = e.code
+			print(e)
+			code = -1
 
 		return code
 

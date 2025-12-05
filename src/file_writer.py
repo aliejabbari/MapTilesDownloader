@@ -28,9 +28,11 @@ class FileWriter:
 		return directory
 
 	@staticmethod
-	def addMetadata(lock, path, file, name, description, format, bounds, center, minZoom, maxZoom, profile="mercator", tileSize=256):
+	def addMetadata(lock, path, file, name, description, format, bounds, center, minZoom, maxZoom, profile="mercator", tileSize=256, extraMetadata=None):
 
 		FileWriter.ensureDirectory(lock, path)
+
+		extraMetadata = extraMetadata or {}
 
 		data = [
 			("name", name),
@@ -47,6 +49,9 @@ class FileWriter:
 			("type", "overlay"),
 			("attribution", "EliteMapper by Visor Dynamics"),
 		]
+
+		for key, value in extraMetadata.items():
+			data.append((key, value))
 		
 		with open(path + "/metadata.json", 'w+') as jsonFile:
 			json.dump(dict(data), jsonFile)

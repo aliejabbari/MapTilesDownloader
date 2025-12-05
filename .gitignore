@@ -1,2 +1,4 @@
 src/output/
 src/temp/
+__pycache__/
+*.pyc

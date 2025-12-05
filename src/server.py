@@ -116,7 +116,10 @@ class serverHandler(BaseHTTPRequestHandler):
 					print("SAVE: " + filePath)
 
 				else:
-					result["message"] = 'Download failed'
+					if result["code"] == 403 and "google.com" in source:
+						result["message"] = 'Google returned 403 (automated tile requests are blocked)'
+					else:
+						result["message"] = 'Download failed'
 
 
 			self.send_response(200)
@@ -204,12 +207,57 @@ class serverHandler(BaseHTTPRequestHandler):
 
 
 		parts = urlparse(self.path)
+
+		if parts.path == "/tile-proxy":
+			query = parse_qs(parts.query)
+			base_url = query.get('url', [None])[0]
+
+			if base_url is None:
+				self.send_error(400, "Missing url to proxy")
+				return
+
+			try:
+				x = int(query.get('x', [0])[0])
+				y = int(query.get('y', [0])[0])
+				z = int(query.get('z', [0])[0])
+			except ValueError:
+				self.send_error(400, "Invalid x/y/z values")
+				return
+
+			tile_url = Utils.qualifyURL(base_url, x, y, z)
+
+			try:
+				with Utils.open_url(tile_url) as response:
+					content = response.read()
+					content_type = response.headers.get_content_type() or "image/png"
+			except Exception as exc:
+				print(f"Proxy error for {tile_url}: {exc}")
+				self.send_error(502, "Failed to fetch tile from source")
+				return
+
+			self.send_response(200)
+			self.send_header("Content-Type", content_type)
+			self.send_header("Access-Control-Allow-Origin", "*")
+			self.end_headers()
+			self.wfile.write(content)
+			return
+
 		path = parts.path.strip('/')
 		if path == "":
 			path = "index.htm"
 
 		file = os.path.join("./UI/", path)
-		mime = mimetypes.MimeTypes().guess_type(file)[0] 
+		if not os.path.isfile(file):
+			# Special-case favicon to avoid noisy tracebacks
+			if path == "favicon.ico":
+				self.send_response(204)
+				self.end_headers()
+				return
+
+			self.send_error(404, "File not found")
+			return
+
+		mime = mimetypes.MimeTypes().guess_type(file)[0] or "application/octet-stream"
 
 		self.send_response(200)
 		# self.send_header("Access-Control-Allow-Origin", "*")
@@ -223,13 +271,21 @@ class serverThreadedHandler(ThreadingMixIn, HTTPServer):
 	"""Handle requests in a separate thread."""
 
 def run():
-	print('Starting Server...')
-	server_address = ('', 8080)
-	httpd = serverThreadedHandler(server_address, serverHandler)
-	print('Running Server...')
+	parser = argparse.ArgumentParser(description="Map Tiles Downloader")
+	parser.add_argument("--host", default="127.0.0.1", help="Host/interface to bind the server to")
+	parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8080)), help="Port to bind the server to")
+	args = parser.parse_args()
 
-	# os.startfile('UI\\index.htm', 'open')
-	print("Open http://localhost:8080/ to view the application.")
+	print('Starting Server...')
+	try:
+		httpd = serverThreadedHandler((args.host, args.port), serverHandler)
+	except OSError as exc:
+		print(f"Failed to bind to {args.host}:{args.port} ({exc}). Trying a random available port instead...")
+		httpd = serverThreadedHandler((args.host, 0), serverHandler)
+		args.port = httpd.server_address[1]
+
+	print('Running Server...')
+	print(f"Open http://{args.host}:{args.port}/ to view the application.")
 
 	httpd.serve_forever()
  

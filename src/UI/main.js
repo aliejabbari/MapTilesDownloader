@@ -6,55 +6,91 @@ $(function() {
 	var draw = null;
 	var geocoder = null;
 	var bar = null;
+	var rectangleDrawingActive = false;
+	var rectangleFirstCorner = null;
 
 	var cancellationToken = null;
 	var requests = [];
 
 	var sources = {
 
-		"Bing Maps": "http://ecn.t0.tiles.virtualearth.net/tiles/r{quad}.jpeg?g=129&mkt=en&stl=H",
-		"Bing Maps Satellite": "http://ecn.t0.tiles.virtualearth.net/tiles/a{quad}.jpeg?g=129&mkt=en&stl=H",
-		"Bing Maps Hybrid": "http://ecn.t0.tiles.virtualearth.net/tiles/h{quad}.jpeg?g=129&mkt=en&stl=H",
+		"🗺️ Bing Maps Road": "http://ecn.t0.tiles.virtualearth.net/tiles/r{quad}.jpeg?g=129&mkt=en&stl=H",
+		"🛰️ Bing Maps Satellite": "http://ecn.t0.tiles.virtualearth.net/tiles/a{quad}.jpeg?g=129&mkt=en&stl=H",
+		"🏙️ Bing Maps Hybrid": "http://ecn.t0.tiles.virtualearth.net/tiles/h{quad}.jpeg?g=129&mkt=en&stl=H",
 
 		"div-1B": "",
 
-		"Google Maps": "https://mt0.google.com/vt?lyrs=m&x={x}&s=&y={y}&z={z}",
-		"Google Maps Satellite": "https://mt0.google.com/vt?lyrs=s&x={x}&s=&y={y}&z={z}",
-		"Google Maps Hybrid": "https://mt0.google.com/vt?lyrs=h&x={x}&s=&y={y}&z={z}",
-		"Google Maps Terrain": "https://mt0.google.com/vt?lyrs=p&x={x}&s=&y={y}&z={z}",
+		"📍 Google Maps (Download Only)": "https://mt0.google.com/vt?lyrs=m&x={x}&s=&y={y}&z={z}",
+		"🛰️ Google Maps Satellite (Download Only)": "https://mt0.google.com/vt?lyrs=s&x={x}&s=&y={y}&z={z}",
+		"🏙️ Google Maps Hybrid (Download Only)": "https://mt0.google.com/vt?lyrs=h&x={x}&s=&y={y}&z={z}",
+		"🏔️ Google Maps Terrain (Download Only)": "https://mt0.google.com/vt?lyrs=p&x={x}&s=&y={y}&z={z}",
 
 		"div-2": "",
 
-		"Open Street Maps": "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-		"Open Cycle Maps": "http://a.tile.opencyclemap.org/cycle/{z}/{x}/{y}.png",
-		"Open PT Transport": "http://openptmap.org/tiles/{z}/{x}/{y}.png",
+		"🗺️ Open Street Maps": "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+		"🚴 Open Cycle Maps": "http://a.tile.opencyclemap.org/cycle/{z}/{x}/{y}.png",
+		"🚌 Open PT Transport": "http://openptmap.org/tiles/{z}/{x}/{y}.png",
 
 		"div-3": "",
 
-		"ESRI World Imagery": "http://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-		"Wikimedia Maps": "https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png",
-		"NASA GIBS": "https://map1.vis.earthdata.nasa.gov/wmts-webmerc/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg",
+		"🛰️ ESRI World Imagery": "http://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+		"📚 Wikimedia Maps": "https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png",
+		"🚀 NASA GIBS": "https://map1.vis.earthdata.nasa.gov/wmts-webmerc/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg",
 
 		"div-4": "",
 
-		"Carto Light": "http://cartodb-basemaps-c.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
-		"Stamen Toner B&W": "http://a.tile.stamen.com/toner/{z}/{x}/{y}.png",
+		"💡 Carto Light": "http://cartodb-basemaps-c.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
+		"🎨 Stamen Toner B&W": "http://a.tile.stamen.com/toner/{z}/{x}/{y}.png",
 
 	};
 
 	function initializeMap() {
 
-		mapboxgl.accessToken = 'pk.eyJ1IjoiYWxpYXNocmFmIiwiYSI6ImNqdXl5MHV5YTAzNXI0NG51OWFuMGp4enQifQ.zpd2gZFwBTRqiapp1yci9g';
+		mapboxgl.accessToken = ''; // not needed for the custom raster style below
 
+		// Simple OSM-based raster style so the map renders without Mapbox tokens
 		map = new mapboxgl.Map({
 			container: 'map-view',
-			style: 'mapbox://styles/aliashraf/ck6lw9nr80lvo1ipj8zovttdx',
-			center: [-73.983652, 40.755024], 
+			style: {
+				"version": 8,
+				"glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+				"sprite": "https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite",
+				"sources": {
+					"base-osm": {
+						"type": "raster",
+						"tiles": ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+						"tileSize": 256,
+						"attribution": "© OpenStreetMap contributors"
+					}
+				},
+				"layers": [
+					{
+						"id": "base-osm",
+						"type": "raster",
+						"source": "base-osm"
+					}
+				]
+			},
+			center: [-73.983652, 40.755024],
 			zoom: 12
 		});
 
+		map.on('load', function() {
+			// Initialize with the default Bing Maps source (skip Google Maps due to CORS)
+			var defaultUrl = $("#source-box").val();
+			if (defaultUrl && !defaultUrl.includes('google.com')) {
+				switchMapSource(defaultUrl, "Bing Maps Satellite");
+			}
+
+			initializeRectangleTool(true); // ensure draw is set up after style is ready
+		});
+
 		geocoder = new MapboxGeocoder({ accessToken: mapboxgl.accessToken });
-		var control = map.addControl(geocoder);
+		try {
+			var control = map.addControl(geocoder);
+		} catch (e) {
+			console.warn("Geocoder failed to initialize (likely missing token). Search box will be disabled.", e);
+		}
 	}
 
 	function initializeMaterialize() {
@@ -62,6 +98,7 @@ $(function() {
 		$('.dropdown-trigger').dropdown({
 			constrainWidth: false,
 		});
+		$('.tooltipped').tooltip();
 	}
 
 	function initializeSources() {
@@ -78,11 +115,14 @@ $(function() {
 
 			var item = $("<li><a></a></li>");
 			item.attr("data-url", url);
+			item.attr("data-name", key);
 			item.find("a").text(key);
 
 			item.click(function() {
 				var url = $(this).attr("data-url");
+				var name = $(this).attr("data-name");
 				$("#source-box").val(url);
+				switchMapSource(url, name);
 			})
 
 			dropdown.append(item);
@@ -96,6 +136,14 @@ $(function() {
 
 			e.preventDefault();
 		})
+
+		// Auto-switch map source when URL is manually entered
+		$("#source-box").on('change input', function() {
+			var url = $(this).val();
+			if (url && url.trim() !== "") {
+				switchMapSource(url, "Custom Source");
+			}
+		});
 	}
 
 	function initializeMoreOptions() {
@@ -118,8 +166,110 @@ $(function() {
 
 	}
 
-	function initializeRectangleTool() {
-		
+	function switchMapSource(url, name) {
+		if (!url || url === "") return;
+
+		// If style isn't ready yet, wait for the load event then retry
+		if (!map || !map.isStyleLoaded()) {
+			map.once('load', function() {
+				switchMapSource(url, name);
+			});
+			return;
+		}
+
+		var requiresProxy = url.includes('google.com') || url.includes('googleapis.com') || url.includes('{quad}');
+
+		// Remove existing custom source if it exists
+		if (map.getSource('custom-tiles')) {
+			map.removeLayer('custom-tiles');
+			map.removeSource('custom-tiles');
+		}
+
+		// Convert different tile URL formats to Mapbox GL JS format
+		var tileUrl = url;
+
+		// Use local proxy for Google tiles or quadkey-based providers to bypass CORS and format issues
+		if (requiresProxy) {
+			var encoded = encodeURIComponent(url);
+			tileUrl = "/tile-proxy?x={x}&y={y}&z={z}&url=" + encoded;
+
+			if (url.includes('google')) {
+				M.toast({
+					html: 'Proxying Google tiles locally so they can be previewed.',
+					displayLength: 4000
+				});
+			}
+		}
+
+		try {
+			// Add the custom tile source
+			map.addSource('custom-tiles', {
+				'type': 'raster',
+				'tiles': [tileUrl],
+				'tileSize': 256,
+				'attribution': name
+			});
+
+			// Add the tile layer
+			var beforeLayer = map.getLayer('waterway-label') ? 'waterway-label' : null;
+			var customLayer = {
+				'id': 'custom-tiles',
+				'type': 'raster',
+				'source': 'custom-tiles',
+				'paint': {}
+			};
+
+			if (beforeLayer) {
+				map.addLayer(customLayer, beforeLayer);
+			} else {
+				map.addLayer(customLayer);
+			}
+
+			M.toast({html: 'Viewing: ' + name, displayLength: 2000});
+
+		} catch (error) {
+			console.error('Error switching map source:', error);
+			console.error('Failed URL:', tileUrl);
+
+			// Provide more specific error messages
+			let errorMsg = 'Error loading ' + name + ' tiles';
+			if (error.message) {
+				errorMsg += ': ' + error.message;
+			}
+
+			M.toast({html: errorMsg, displayLength: 4000});
+
+			// Try to fall back to the default Mapbox style
+			try {
+				if (map.getSource('custom-tiles')) {
+					map.removeLayer('custom-tiles');
+					map.removeSource('custom-tiles');
+				}
+				M.toast({html: 'Falling back to default map style', displayLength: 2000});
+			} catch (fallbackError) {
+				console.error('Fallback error:', fallbackError);
+			}
+		}
+	}
+
+	function initializeRectangleTool(force) {
+
+		if (!map) {
+			return;
+		}
+
+		// if map style not yet loaded, postpone initialization
+		if (!force && !map.isStyleLoaded()) {
+			map.once('load', function() {
+				initializeRectangleTool(true);
+			});
+			return;
+		}
+
+		if (draw) {
+			return; // already initialized
+		}
+
 		var modes = MapboxDraw.modes;
 		modes.draw_rectangle = DrawRectangle.default;
 
@@ -139,18 +289,76 @@ $(function() {
 	}
 
 	function startDrawing() {
+		if (!draw) {
+			M.toast({html: 'Map is still loading, please try again in a moment.', displayLength: 3000});
+			return;
+		}
+
+		if (!map.isStyleLoaded()) {
+			map.once('load', startDrawing);
+			return;
+		}
+
 		removeGrid();
 		draw.deleteAll();
-		draw.changeMode('draw_rectangle');
+
+		rectangleDrawingActive = true;
+		rectangleFirstCorner = null;
+		map.getCanvas().style.cursor = 'crosshair';
+		try { map.doubleClickZoom.disable(); } catch(e){}
 
 		M.Toast.dismissAll();
-		M.toast({html: 'Click two points on the map to make a rectangle.', displayLength: 7000})
+		M.toast({html: 'Click the first corner, then the opposite corner to create a rectangle.', displayLength: 7000});
+	}
+
+	function rectangleClickHandler(e) {
+		if (!rectangleDrawingActive) {
+			return;
+		}
+
+		if (!rectangleFirstCorner) {
+			rectangleFirstCorner = e.lngLat;
+			M.Toast.dismissAll();
+			M.toast({html: 'Now click the opposite corner.', displayLength: 5000});
+			return;
+		}
+
+		var c1 = rectangleFirstCorner;
+		var c2 = e.lngLat;
+
+		// Build rectangle coordinates
+		var coords = [
+			[c1.lng, c1.lat],
+			[c2.lng, c1.lat],
+			[c2.lng, c2.lat],
+			[c1.lng, c2.lat],
+			[c1.lng, c1.lat],
+		];
+
+		draw.deleteAll();
+		draw.add({
+			type: 'Feature',
+			properties: {},
+			geometry: {
+				type: 'Polygon',
+				coordinates: [coords]
+			}
+		});
+
+		rectangleDrawingActive = false;
+		rectangleFirstCorner = null;
+		map.getCanvas().style.cursor = '';
+		try { map.doubleClickZoom.enable(); } catch(e){}
+
+		M.Toast.dismissAll();
+		M.toast({html: 'Region selected. You can preview grid or download now.', displayLength: 5000});
 	}
 
 	function initializeGridPreview() {
 		$("#grid-preview-button").click(previewGrid);
 
 		map.on('click', showTilePopup);
+		map.on('click', rectangleClickHandler);
 	}
 
 	function showTilePopup(e) {
@@ -246,6 +454,10 @@ $(function() {
 
 	function getBounds() {
 
+		if(draw.getAll().features.length === 0) {
+			return null;
+		}
+
 		var coordinates = draw.getAll().features[0].geometry.coordinates[0];
 
 		var bounds = coordinates.reduce(function(bounds, coord) {
@@ -258,6 +470,9 @@ $(function() {
 	function getGrid(zoomLevel) {
 
 		var bounds = getBounds();
+		if (!bounds) {
+			return [];
+		}
 
 		var rects = [];
 
@@ -307,6 +522,11 @@ $(function() {
 	}
 
 	function previewGrid() {
+
+		if(draw.getAll().features.length === 0) {
+			M.toast({html: 'Draw a rectangle first.', displayLength: 3000});
+			return;
+		}
 
 		var maxZoom = getMaxZoom();
 		var grid = getGrid(maxZoom);
@@ -424,6 +644,11 @@ $(function() {
 	}
 
 	async function startDownloading() {
+
+		if(draw.getAll().features.length === 0) {
+			M.toast({html: 'You need to select a region first.', displayLength: 3000});
+			return;
+		}
 
 		if(draw.getAll().features.length == 0) {
 			M.toast({html: 'You need to select a region first.', displayLength: 3000})
